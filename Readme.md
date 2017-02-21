@@ -1,8 +1,7 @@
-# Backblaze
+#  ruby_Backblaze
 
-The Backblaze ruby gem is an implementation of the [Backblaze B2 Cloud Storage API](https://www.backblaze.com/b2/docs/). In addition to simplifying calls, it also implements an object oriented structure for dealing with files. Calling the api through different objects will not cause each to get updated. Always assume that data retrieved is just a snapshot from when the object was retrieved.
 
-## Installation
+## Installation and Setup
 
 1) Clone or download this file from github
 
@@ -13,8 +12,6 @@ The Backblaze ruby gem is an implementation of the [Backblaze B2 Cloud Storage A
 4) Open the main folder (named "ruby_backblaze/") and run "bundle install"
 
 5)  Rename sample.env to ".env", and fill in the environment variables there using the information provided by your backblaze b2 dashboard
-
-
 
 
 ## Usage 
@@ -40,6 +37,3 @@ Decided not to use credentials_file method given by backblaze gem, but instead u
 Bug reports and pull requests are welcome on GitHub at https://github.com/RyanQuey/ruby_backblaze. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [Contributor Covenant](contributor-covenant.org) code of conduct.
 
 
-## License
-
-The gem is available as open source under the terms of the [MIT License](http://opensource.org/licenses/MIT).
