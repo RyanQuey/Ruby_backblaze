@@ -25,7 +25,7 @@ module HelperMethods
 
   def list_and_choose_bucket
     
-    buckets_list_response = HTTParty.post("#{@api_url}/b2_list_buckets", {
+    response = HTTParty.post("#{@api_url}/b2_list_buckets", {
       body: {accountId: ENV['ACCOUNT_ID']}.to_json,
       headers: @api_http_headers
     }) #returns an array
@@ -33,21 +33,21 @@ module HelperMethods
     # Basically, to pick a different bucket, replace 0 with the appropriate number. Can do this either using gets.chomp or manually configuring backup_script_template.
     if @chosen_bucket_name == "prompt me"
       puts "Available buckets:"
-      buckets_list_response["buckets"].each_with_index do |b, i|
+      response["buckets"].each_with_index do |b, i|
         print i+1 
         puts ") " + b["bucketName"]
       end
       puts "Which Bucket do you want to upload to? (insert number and press enter)" 
       @chosen_bucket_number = gets.chomp.to_i-1
 
-      if @chosen_bucket_number > buckets_list_response["buckets"].length || @chosen_bucket_number < 0 
+      if @chosen_bucket_number > response["buckets"].length || @chosen_bucket_number < 0 
         #TODO Eventually assign a real error message
         puts "Invalid number: There is no such bucket for that number"
         return
       end
-      @chosen_bucket_hash = buckets_list_response["buckets"][@chosen_bucket_number]
+      @chosen_bucket_hash = response["buckets"][@chosen_bucket_number]
     else # I.e., if the @chosen_bucket_name is an actual bucket name:
-      buckets_list_response["buckets"].each do |b|
+      response["buckets"].each do |b|
         if @chosen_bucket_name == b["bucketName"]
           @chosen_bucket_hash = b 
         end
@@ -56,20 +56,19 @@ module HelperMethods
     
   end #end of list_and_choose_bucket method
 
-  def upload_setup(file)
+  def upload_setup(filename, file_data)
     if @size_of_file == "large"
       #Basically implements b2_start_large_file API call
       response = HTTParty.post("#{@api_url}/b2_start_large_file", 
         body: {
           bucketId: @chosen_bucket_hash["bucketId"],
-          fileName: "#{@filename_of_upload}",
-          contentType: "#{@content_type}"
+          fileName: filename,
+          contentType: "#{file_data["content_type"]}"
           #could also eventually incorporate fileInfo parameter here
         }.to_json,
         headers: @api_http_headers
       ) 
       @file_id = response["fileId"]
-      puts @file_id
     elsif @size_of_file == "regular"
       #TODO: What do I do for regular files?
       
@@ -85,33 +84,60 @@ module HelperMethods
       }.to_json,
       headers: @api_http_headers
     ) 
-    puts response
+    # This array will store the URLs, one for each thread
     @upload_urls.push(response["uploadUrl"])
   end
 
 
-  def upload_file
+  def upload_file(filename, file_data)
     if @size_of_file == "large"
-      ##b2_upload_part
-      number_of_parts = 1
-      number_of_parts.times do |p|
-        additional_header_info = {
-          "X-Bz-Part-Number": p,
-          #is the same as the minimum?
-          "Content-Length": @minimum_part_size_bytes,
+      ##Largely following the backblaze official documentation for b2_upload_part
+
+      ##Begin by setting variables
+      local_file_size = file_data[:file_object].size
+      total_bytes_sent = 0 #Initializes variable as 0. Will eventually total all of the bytes sent for the entire file, totaling all the parts
+      bytes_sent_for_part = @minimum_part_size_bytes # this set the default size of the parts
+      sha1_of_parts = [] # SHA1 of each uploaded part. You will need to save these because you will need them in b2_finish_large_file.
+      part_number = 1 #begins with the 1st part, but that will change as the program runs
+      thread_number = 1 #This is the default thread number. Redefined this local variable when the thread number changes, so be sure never to exceed the number_of_threads local variable since that local variable determines how many URLs we have, and we need one URL per thread
+      ##Iterate through the file until entire file is finished uploading
+      while total_bytes_sent < local_file_size do 
+
+        ##Determine number of bytes to send
+        #Basically, if the rest of the file that hasn't been uploaded yet is less than the minimum part size, the last part will only be the size of the rest of the file that hasn't been uploaded yet rather than the minimum part size
+        if (local_file_size - total_bytes_sent) < @minimum_part_size_bytes
+          bytes_sent_for_part = (local_file_size - total_bytes_sent)
+        end
+
+        ## Read file into memory and calculate an SHA1
+        file_part_data = File.read(file_data[:file_path], bytes_sent_for_part, total_bytes_sent, mode: "rb")
+ #TODO: try this instead to potentially speed things up: 
+ #file_part_data = file_data[:file_object].read(bytes_sent_for_part) #This is what is recommended in the documentation: 
+ #Need to make sure though that the read method only reads what hasn't already been read, which is what the class method File.read does. But I think what I have your does do that.
+        sha1_of_parts.push(Digest::SHA1.hexdigest(file_part_data)) # Adds the SHA 1 of this part onto the sha1_of_parts array
+
+        # Send it over the wire
+        uri = URI(@upload_urls[thread_number -1]) # Subtract one in order to get the right index from the sha1_of_parts array       
+        header = { 
+          "Authorization": "#{@api_http_headers[:Authorization]}",
+          "X-Bz-Part-Number":  "#{part_number}",
+          "Content-Length": "#{bytes_sent_for_part}", #is the same as the minimum? No distinction at all?
           #Not sure how to figure this one out. Maybe environ variable?
-          "X-Bz-Content-Sha1": 1
+          "X-Bz-Content-Sha1": "#{sha1_of_parts[part_number -1]}" # Subtract one in order to get the right index from the sha1_of_parts array
         }
         response = HTTParty.post(
-          "#{@api_url}/b2_upload_part", 
-          headers: @api_http_headers.merge(additional_header_info)
-        ) 
+          "#{uri}", 
+          headers: header
+        )
         puts response
+        #TODO:Eventually want to deal with the possibility of error messages, and redirect or something, just as the backblaze documentation does.
+  
+        # Prepare for the next iteration of the loop (i.e., for the next part)
+        total_bytes_sent += bytes_sent_for_part
+        part_number += 1
       end
 
-
-
-      b2_finish_large_file
+        #TODO:b2_finish_large_file
 
 
     elsif @size_of_file == "regular"

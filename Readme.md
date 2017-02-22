@@ -1,5 +1,9 @@
 #  ruby_Backblaze
 
+## Features
+-Automatically compiled using gzip if the file to upload is a folder that is already archived.
+
+-Prevents backups from running while the files are being written to and vice a versa.
 
 ## Installation and Setup
 
@@ -16,9 +20,7 @@
 
 ## Usage 
 
-Open the main folder (named "ruby_backblaze/") and run "foreman run ruby ...", depending on the type of files you want to upload.
-
-For large files, including backup files, use large_files.rb. Just put the entire backup into a single folder, and designate that folder as the upload file. (Might need to be compressed/archived?)
+Open the main folder (named "ruby_backblaze/") and run "foreman run ruby backup_script_template.rb"
 
 **TODO**
 Figure out a way to run multiple threads to upload larger files faster. 
