@@ -13,13 +13,37 @@ include HelperMethods
 
 @chosen_bucket_name = "prompt me"
 
-#Do the same here, with @filename_of_upload
-@filename_of_upload = "test_for_upload.txt" #make the default "prompt me"
+#Do the same here, with @filename_of_upload?
+#TODO: make the default "prompt me"?
 
-#Unless you want to manually enter the content type, leave this alone and backblaze will determine the content type automatically.
-@content_type = "b2/x-auto"
+#For every file you want to upload, create a new string followed by a comma
+#
+#
+    #Unless you want to manually enter the content type, leave this alone (at "b2/x-auto") and backblaze will determine the content type automatically.
 
+# Set the PATH_TO_UPLOAD environment variable in .env as a string with paths for all the files you want to upload separated by commas, with no spaces in between.
+
+#Will end up being an array filled with hashes, similar to JSON
+files_to_upload = {}
+#This variable is used to set the index
+file_number = 0
+paths_to_upload = ENV['PATHS_TO_UPLOAD'].split(",")
+paths_to_upload.each do |path|
+  file_object = File.open(path)
+  filename = path.split("/")[-1]
+  file_to_merge = {
+    filename =>  {
+        "content_type": "b2/x-auto",
+        "file_object": file_object
+    }
+  }
+  files_to_upload = files_to_upload.merge(file_to_merge)
+  file_number += 1
+end
+
+ binding.pry
 #Put "regular" for regular uploads, or "large" for large uploads (see backblaze documentation for which to use)
+#TODO: changes variable dynamically depending upon the size of the file. Have users input a certain file size that below that size, will automatically be a regular file upload, and above that size, the automatically be large file upload.
 @size_of_file = "large"
 
 #Put a number here for the number of threads
@@ -35,8 +59,9 @@ number_of_threads = 1
 
 authorize_account
 list_and_choose_bucket
-specify_file if @filename_of_upload == "prompt me"
-upload_setup 
-@upload_urls = []
-number_of_threads.times { |i| get_upload_url(i+1) }
-upload_file
+files_to_upload.each do |file|
+  upload_setup(file)
+  @upload_urls = []
+  number_of_threads.times { |i| get_upload_url(i+1) }
+  upload_file
+end

@@ -56,15 +56,7 @@ module HelperMethods
     
   end #end of list_and_choose_bucket method
 
-  def specify_file
-    #TODO Need to come up with file names list, using the Ruby Dir and File classes.
-    puts "Available files:"
-    #Need to find a way to browse through the directories using Ruby
-    puts "Which file do you want to upload?" 
-    @filename_of_upload = gets.chomp
-  end
-
-  def upload_setup 
+  def upload_setup(file)
     if @size_of_file == "large"
       #Basically implements b2_start_large_file API call
       response = HTTParty.post("#{@api_url}/b2_start_large_file", 
@@ -110,15 +102,18 @@ module HelperMethods
           #Not sure how to figure this one out. Maybe environ variable?
           "X-Bz-Content-Sha1": 1
         }
-        response = HTTParty.post("#{@api_url}/b2_upload_part", 
-          body: {
-            fileId: @file_id
-          }.to_json,
+        response = HTTParty.post(
+          "#{@api_url}/b2_upload_part", 
           headers: @api_http_headers.merge(additional_header_info)
         ) 
         puts response
       end
+
+
+
       b2_finish_large_file
+
+
     elsif @size_of_file == "regular"
       #TODO: What do I do for regular files?
       b2_upload_file
