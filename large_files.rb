@@ -64,48 +64,46 @@ module LargeFiles
     puts bucket_object.inspect
   end #end of list_and_choose_bucket method
 
-  def specify_file_upload_info
-    if @filename_of_upload == "prompt me"
-      puts "Available files:"
-      #Need to find a way to browse through the directories using Ruby
-      filenames_list.each do |f|
-        puts f["fileName"]
-      end
-      puts "Which file do you want to upload?" 
-      @filename_of_upload = gets.chomp
-    end
+  def specify_file
+    #TODO Need to come up with file names list, using the Ruby Dir and File classes.
+    puts "Available files:"
+    #Need to find a way to browse through the directories using Ruby
+    puts "Which file do you want to upload?" 
+    @filename_of_upload = gets.chomp
+  end
 
-    #Might remove this function, or else decided automatically depending on the type of backup.
-    puts "Manually decide content type?[y/n] (If answer is not y, it will be assumed that the answer is no)"
-    user_response = gets.chomp
-    
-    if user_response == "y" # or "Y"
-      @content_type = gets.chomp
-    else 
-      @content_type = "b2/x-auto"
+  def upload_setup 
+    if @size_of_file == "large"
+      #Basically implements b2_start_large_file API call
+      response = HTTParty.post("#{Backblaze::B2::Base.base_uri}/b2_start_large_file", 
+        body: {
+          bucketId: @chosen_bucket_hash["bucketId"],
+          fileName: "#{@filename_of_upload}",
+          contentType: "#{@content_type}"
+          #could also eventually incorporate fileInfo parameter here
+        }.to_json,
+        headers: Backblaze::B2::Base.headers
+      ) 
+      @file_id = response["fileId"]
+      puts @file_id
+    elsif @size_of_file == "regular"
+      #TODO: What do I do for regular files?
     end
   end
 
-
-  def start_large_file
-    response = HTTParty.post("#{Backblaze::B2::Base.base_uri}/b2_start_large_file", 
+  #Should receive the thread_number argument when this method is called, but if it does not, default to thread number 1.
+  #TODO: Might not need this variable thread_number at all
+  def get_upload_url(thread_number=1)
+    response = HTTParty.post("#{Backblaze::B2::Base.base_uri}/b2_get_upload_part_url", 
       body: {
-        bucketId: @chosen_bucket_hash["bucketId"],
-        fileName: "#{@filename_of_upload}",
-        contentType: "#{@content_type}"
-        #could also eventually incorporate fileInfo parameter here
+        fileId: @file_id
       }.to_json,
       headers: Backblaze::B2::Base.headers
     ) 
-   puts @chosen_bucket_hash["bucketId"]
-   puts response
+    puts response
+    @upload_urls.push(response["uploadUrl"])
   end
-  def list_filenames
 
-    bucket.file_names.each do |f|
-     puts  f.file_name #(or something like this)
-    end
-  end
 end #(of the module)
 
 
