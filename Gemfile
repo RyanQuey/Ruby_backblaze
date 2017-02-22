@@ -1,4 +1,9 @@
 source 'https://rubygems.org'
 
 
-gem 'backblaze'
+ruby "2.3.1"
+
+#gem 'backblaze'
+gem 'rspec'
+gem 'pry'
+gem 'httparty'

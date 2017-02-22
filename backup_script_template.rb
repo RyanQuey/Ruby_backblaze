@@ -1,5 +1,13 @@
+# INSTRUCTIONS:
+# Run this file using " ruby large_files.rb" and put in the inputs  in order to backup large files on backblaze
+
+# make sure the sample.env file has been turned into .env and filled in using information from the backblaze b2 dashboard
+
+# TODO the backblaze gem hasn't been updated in the last 6 months, so doesn't include any API for lifecycle rules. That seems to be the only thing that could essentially be outdated, but might be worth looking into seeing if there are other changes to the API.
+
+require "httparty"
 require_relative './large_files'
-include LargeFiles
+include HelperMethods
 
 #Either put in the exact bucket name here, if you want to specify the bucket, or else leave in "prompt me" if you want to be prompted each time you run the script. Make sure to use the correct capitalization and spacing for the bucket name.
 
@@ -25,9 +33,10 @@ number_of_threads = 1
 
 # Place "large" or "regular" depending on whether or not you are uploading large files or regular files. If you're not sure, see the backblaze documentation on their website.
 
+authorize_account
 list_and_choose_bucket
 specify_file if @filename_of_upload == "prompt me"
 upload_setup 
 @upload_urls = []
 number_of_threads.times { |i| get_upload_url(i+1) }
-puts @upload_urls
+upload_file
