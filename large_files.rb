@@ -93,15 +93,6 @@ module HelperMethods
     if @size_of_file == "large"
       ##Largely following the backblaze official documentation for b2_upload_part
       
-      list_unfinished_large_files
-      #if filename == unfinished_large_file
-        puts "Finish uploading previously started upload of this file instead?"
-        puts "(y/n -- if anything other than 'y' is given, answer is assumed to be 'no'):"
-        user_input = gets.chomp
-        if user_input == "y" || "Y"
-
-        end
-      #end
 
       ##Begin by setting variables
       local_file_size = file_data[:file_object].size
@@ -141,7 +132,6 @@ module HelperMethods
           body: file_part_data,
           debug_output: $stdout
         )
- binding.pry
         puts response
         #TODO:Eventually want to deal with the possibility of error messages, and redirect or something, just as the backblaze documentation does.
   
@@ -166,24 +156,39 @@ module HelperMethods
     
   end
 
-  def list_unfinished_large_files
+  def check_for_unfinished_large_files(filename, file_data)
+    puts "Finish uploading previously started upload of this file instead?"
+    puts "(y/n -- if anything other than 'y' is given, answer is assumed to be 'no'):"
+    user_input = gets.chomp
+    unless user_input == "y" || user_input == "Y"
+      return
+    end
     response = HTTParty.post("#{@api_url}/b2_list_unfinished_large_files", 
       body: {
         bucketId: @chosen_bucket_hash["bucketId"],
       }.to_json,
       headers: @api_http_headers
     ) 
-    puts "Available buckets:"
-    puts response  
+    puts "Unfinished files:"
+    response["files"].select!(f["fileName"] == filename)
     response["files"].each_with_index do |f, i|
       print i+1 
       puts ") " + f["fileName"]
     end
-    puts "Which  do you want to upload to? (insert number of file to finish or 'n' and press enter)" 
+
+    #Select which upload to finish
+    puts "Which upload do you want to finish? (insert number of file to finish or 'n' to upload this file from scratch)" 
     @chosen_file_number = gets.chomp
+    # Just to make sure that an erroneous numbers is not put in
     if response["files"].length >= @chosen_file_number.to_i-1
       @file_to_finish = response["files"][@chosen_file_number.to_i-1] # this will be a hash with various metadata for the file
       list_already_uploaded_parts
+      key = @file_to_finish["fileName"]
+      value = @file_to_finish[
+        "{"]
+      # Returns out of the method call, but overrides the variables that will be passed to subsequent method calls. A different way of doing this is return instance variables out of this method whether or not you continue a former upload or start a new upload, and use those instance variablesin subsequent methods.
+      return(key, value)
+ #Finishes the upload setup 
     else
       puts "continuing with new upload..."
     end

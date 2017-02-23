@@ -91,7 +91,11 @@ number_of_threads = 1
 authorize_account
 list_and_choose_bucket
 files_to_upload.each do |key, value|
-  upload_setup(key, value)
+  check_for_unfinished_large_files(key, value)
+  binding.pry
+
+  # skips this method if continuing in unfinished upload, since the @file_id from that method would be used instead
+  upload_setup(key, value) unless @file_id == nil
   #sets the variable as an empty array which will be filled up by the call to get_upload_url
   @upload_urls = []
   number_of_threads.times { |i| get_upload_url(i+1) }
