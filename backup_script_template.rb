@@ -11,7 +11,7 @@
 ##################
 
 require "httparty"
-require_relative './large_files'
+require_relative './helper_methods'
 include HelperMethods
 
 
@@ -72,32 +72,28 @@ files_to_upload.each_with_index do |(filename, file_data), index|
     new_filename = file_data[:file_path].split("/")[-1]
     files_to_upload.keys[index] = new_filename
   end
+
+  # Sets the file size. Must be done after determining whether or not archiving is necessary. Note: size is in bytes
+  
 end
-##Instructions: Put "regular" for regular uploads, or "large" for large uploads (see backblaze documentation for which to use)
-#TODO: changes variable dynamically depending upon the size of the file. Have users input a certain file size that below that size, will automatically be a regular file upload, and above that size, the automatically be large file upload.
-@size_of_file = "large"
-
-#Put a number here for the number of threads
-number_of_threads = 1
-
-#Either put in the exact file/folder name here, if you want to specify the file/folder, or else leave in "prompt me" if you want to be prompted each time you run the script. Make sure to use the correct capitalization and spacing for the file/folder name.
-# Note that this can be a file or a folder
-
-
-# Eventually move all of this code in turn it into helper methods in place in other documents, to keep this more clean.
-
-# Place "large" or "regular" depending on whether or not you are uploading large files or regular files. If you're not sure, see the backblaze documentation on their website.
-
-authorize_account
-list_and_choose_bucket
 files_to_upload.each do |key, value|
-  check_for_unfinished_large_files(key, value)
-  binding.pry
-
-  # skips this method if continuing in unfinished upload, since the @file_id from that method would be used instead
-  upload_setup(key, value) unless @file_id == nil
+  authorize_account
+  list_and_choose_bucket
+  @local_file_size = value[:file_object].size
   #sets the variable as an empty array which will be filled up by the call to get_upload_url
-  @upload_urls = []
-  number_of_threads.times { |i| get_upload_url(i+1) }
-  upload_file(key, value)
+  if @local_file_size > @minimum_part_size_bytes # If true, this would be a large upload
+    #Put a number here for the number of threads
+    number_of_threads = 1
+    check_for_unfinished_large_files(key, value)
+    # skips this method if continuing in unfinished upload, since the @file_id from that method would be used instead
+    upload_setup(key, value) unless @file_id == nil
+    @upload_urls = []
+    number_of_threads.times { |i| get_upload_part_url(i+1) }
+    upload_large_file(key, value)
+    finish_large_file
+  else  # This would then be a regular upload
+    # Probably would leave number of threads as one?
+    get_upload_url
+    upload_regular_file(key, value)
+  end
 end
