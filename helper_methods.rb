@@ -6,7 +6,7 @@ require 'digest/sha1'
 module HelperMethods
   include HTTParty
   
-   def authorize_account 
+  def authorize_account 
     response = HTTParty.get("https://api.backblazeb2.com/b2api/v1/b2_authorize_account", {
       basic_auth: {
         username: ENV['ACCOUNT_ID'], 
@@ -24,13 +24,11 @@ module HelperMethods
   end
 
   def list_and_choose_bucket
-    
     response = HTTParty.post("#{@api_url}/b2_list_buckets", {
       body: {accountId: ENV['ACCOUNT_ID']}.to_json,
       headers: @api_http_headers
-    }) #returns an array
+    }) 
     
-    # Basically, to pick a different bucket, replace 0 with the appropriate number. Can do this either using gets.chomp or manually configuring backup_script_template.
     if @chosen_bucket_name == "prompt me"
       puts "Available buckets:"
       response["buckets"].each_with_index do |b, i|
@@ -56,7 +54,7 @@ module HelperMethods
     
   end 
 
-  def check_for_unfinished_large_files(filename, file_data)
+  def check_for_unfinished_large_files(file)
     puts "Finish uploading previously started upload of this file instead?"
     puts "(y/n -- if anything other than 'y' is given, answer is assumed to be 'no'):"
     user_input = gets.chomp
@@ -71,7 +69,7 @@ module HelperMethods
     ) 
     puts "Unfinished files:"
     #only return uploads that are backups of the same file that the user is trying to upload.
-    response["files"].select! { |f| f["fileName"] == filename}
+    response["files"].select! { |f| f["fileName"] == file[:filename]}
     response["files"].each_with_index do |f, i|
       print i+1 
       puts ") " + f["fileName"]
@@ -80,7 +78,7 @@ module HelperMethods
     #Select which upload to finish
     puts "Which upload do you want to finish? (insert number of file to finish or 'n' to upload this file from scratch)" 
     @chosen_file_number = gets.chomp
-
+    return if @chosen_file_number == "n"
     # Just to make sure that an erroneous numbers is not put in
     if response["files"].length >= @chosen_file_number.to_i-1
       #TODO: might not need the following instance variable; but might need it, so leave it for now.
@@ -94,13 +92,13 @@ module HelperMethods
     
   end
 
-  def upload_setup(filename, file_data)
+  def upload_setup(file)
     #Basically implements b2_start_large_file API call
     response = HTTParty.post("#{@api_url}/b2_start_large_file", 
       body: {
         bucketId: @chosen_bucket_hash["bucketId"],
-        fileName: filename,
-        contentType: "#{file_data["content_type"]}"
+        fileName: file[:filename],
+        contentType: "#{file["content_type"]}"
         #could also eventually incorporate fileInfo parameter here
       }.to_json,
       headers: @api_http_headers
@@ -132,7 +130,7 @@ module HelperMethods
     @upload_urls = [response["uploadUrl"]]
   end
 
-  def upload_large_file(filename, file_data)
+  def upload_large_file(file)
     ##Largely following the backblaze official documentation for b2_upload_part
 
     ##Begin by setting variables
@@ -149,9 +147,9 @@ module HelperMethods
         bytes_sent_for_part = (@local_file_size - total_bytes_sent)
       end
       ## Read file into memory and calculate an SHA1
-      file_part_data = File.read(file_data[:file_path], bytes_sent_for_part, total_bytes_sent, mode: "rb")
+      file_part_data = File.read(file[:file_path], bytes_sent_for_part, total_bytes_sent, mode: "rb")
       #TODO: try this instead to potentially speed things up: 
-      #file_part_data = file_data[:file_object].read(bytes_sent_for_part) 
+      #file_part_data = file[:file_object].read(bytes_sent_for_part) 
       #Currently using what is recommended in the documentation 
       #Need to make sure though that the read method only reads what hasn't already been read, which is what the class method File.read does. But I think what I have your does do that.
        @sha1_of_parts.push(Digest::SHA1.hexdigest(file_part_data)) # Adds the SHA 1 of this part onto the sha1_of_parts array
@@ -193,26 +191,25 @@ module HelperMethods
     puts response
   end
 
-  def upload_regular_file(filename, file_data)
+  def upload_regular_file(file)
     ##Largely following the backblaze official documentation for b2_upload_file
 
     ##Begin by setting variables
     ## Read file into memory and calculate an SHA1
-    file_content = File.read(file_data[:file_path])
+    file_content = File.read(file[:file_path])
     #TODO: try this instead to potentially speed things up: 
-    #file_data = file_data[:file_object].read 
+    #file = file[:file_object].read 
     #Currently using what is recommended in the documentation 
     #Need to make sure though that the read method only reads what hasn't already been read, which is what the class method File.read does. But I think what I have your does do that.
      @sha1_of_parts = [Digest::SHA1.hexdigest(file_content)] # Keeping this as an array in owner to have continuity with uploading large files
     # Send it over the wire
- binding.pry
     uri = URI(@upload_urls[0])  
     #TODO: Not sure if this encodes correctly or not
-    encoded_filename = filename.encode('utf-8')
+    encoded_filename = file[:file_name].encode('utf-8')
     header = { 
       "Authorization": "#{@api_http_headers[:Authorization]}",
       "X-Bz-File-Name":  "#{encoded_filename}",
-      "Content-Type": "#{file_data[:content_type]}",
+      "Content-Type": "#{file[:content_type]}",
       "Content-Length": "#{@local_file_size}", #is the same as the minimum? No distinction at all?
       "X-Bz-Content-Sha1": "#{@sha1_of_parts[0]}" # Subtract one in order to get the right index from the sha1_of_parts array
     }
