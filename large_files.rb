@@ -92,6 +92,16 @@ module HelperMethods
   def upload_file(filename, file_data)
     if @size_of_file == "large"
       ##Largely following the backblaze official documentation for b2_upload_part
+      
+      list_unfinished_large_files
+      #if filename == unfinished_large_file
+        puts "Finish uploading previously started upload of this file instead?"
+        puts "(y/n -- if anything other than 'y' is given, answer is assumed to be 'no'):"
+        user_input = gets.chomp
+        if user_input == "y" || "Y"
+
+        end
+      #end
 
       ##Begin by setting variables
       local_file_size = file_data[:file_object].size
@@ -127,8 +137,11 @@ module HelperMethods
         }
         response = HTTParty.post(
           "#{uri}", 
-          headers: header
+          headers: header,
+          body: file_part_data,
+          debug_output: $stdout
         )
+ binding.pry
         puts response
         #TODO:Eventually want to deal with the possibility of error messages, and redirect or something, just as the backblaze documentation does.
   
@@ -137,7 +150,7 @@ module HelperMethods
         part_number += 1
       end
 
-        #TODO:b2_finish_large_file
+      finish_large_file
 
 
     elsif @size_of_file == "regular"
@@ -145,6 +158,51 @@ module HelperMethods
       b2_upload_file
     end
     
+  end
+
+  private
+
+  def finish_large_file
+    
+  end
+
+  def list_unfinished_large_files
+    response = HTTParty.post("#{@api_url}/b2_list_unfinished_large_files", 
+      body: {
+        bucketId: @chosen_bucket_hash["bucketId"],
+      }.to_json,
+      headers: @api_http_headers
+    ) 
+    puts "Available buckets:"
+    puts response  
+    response["files"].each_with_index do |f, i|
+      print i+1 
+      puts ") " + f["fileName"]
+    end
+    puts "Which  do you want to upload to? (insert number of file to finish or 'n' and press enter)" 
+    @chosen_file_number = gets.chomp
+    if response["files"].length >= @chosen_file_number.to_i-1
+      @file_to_finish = response["files"][@chosen_file_number.to_i-1] # this will be a hash with various metadata for the file
+      list_already_uploaded_parts
+    else
+      puts "continuing with new upload..."
+    end
+    
+  end
+
+  def list_already_uploaded_parts
+    response = HTTParty.post("#{@api_url}/b2_list_parts", 
+      body: {
+        fileId: @file_to_finish["fileId"],
+      }.to_json,
+      headers: @api_http_headers
+    ) 
+    puts "Already uploaded parts:"
+    puts response  
+  end
+
+  def cancel_large_file
+
   end
 
 end #(of the module)
