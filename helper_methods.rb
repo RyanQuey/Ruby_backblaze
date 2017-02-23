@@ -6,7 +6,28 @@ require 'digest/sha1'
 module HelperMethods
   include HTTParty
   
-  def authorize_account 
+  def upload_files(file)
+      list_and_choose_bucket(file)
+      @local_file_size = file[:file_object].size
+      #sets the variable as an empty array which will be filled up by the call to get_upload_url
+      if @local_file_size > @minimum_part_size_bytes # If true, this would be a large upload
+        #Put a number here for the number of threads
+        number_of_threads = 1
+        check_for_unfinished_large_files(file)
+        # skips this method if continuing in unfinished upload, since the @file_id from that method would be used instead
+        upload_setup(file) unless @file_id == nil
+        @upload_urls = []
+        number_of_threads.times { |i| get_upload_part_url(i+1) }
+        upload_large_file(file)
+        finish_large_file(file)
+      else  # This would then be a regular upload
+        # Probably would leave number of threads as one?
+        get_upload_url(file)
+        upload_regular_file(file)
+      end
+  end
+
+  def authorize_account
     response = HTTParty.get("https://api.backblazeb2.com/b2api/v1/b2_authorize_account", {
       basic_auth: {
         username: ENV['ACCOUNT_ID'], 
@@ -23,13 +44,14 @@ module HelperMethods
     ## b2_list_buckets ##
   end
 
-  def list_and_choose_bucket
+  def list_and_choose_bucket(file)
     response = HTTParty.post("#{@api_url}/b2_list_buckets", {
       body: {accountId: ENV['ACCOUNT_ID']}.to_json,
       headers: @api_http_headers
     }) 
+    handle_response_status_code(file, response.code)
     
-    if @chosen_bucket_name == "prompt me"
+    if @bucket_name == "prompt me"
       puts "Available buckets:"
       response["buckets"].each_with_index do |b, i|
         print i+1 
@@ -38,18 +60,23 @@ module HelperMethods
       puts "Which Bucket do you want to upload to? (insert number and press enter)" 
       @chosen_bucket_number = gets.chomp.to_i-1
 
+      # Picks a specific bucket to upload to
       if @chosen_bucket_number > response["buckets"].length || @chosen_bucket_number < 0 
         #TODO Eventually assign a real error message
         puts "Invalid number: There is no such bucket for that number"
         return
       end
+      
       @chosen_bucket_hash = response["buckets"][@chosen_bucket_number]
-    else # I.e., if the @chosen_bucket_name is an actual bucket name:
+      @bucket_name = @chosen_bucket_hash["bucketName"]
+
+    else # I.e., if the @bucket_name is an actual bucket name:
       response["buckets"].each do |b|
-        if @chosen_bucket_name == b["bucketName"]
+        if @bucket_name == b["bucketName"]
           @chosen_bucket_hash = b 
         end
       end
+
     end
     
   end 
@@ -67,6 +94,7 @@ module HelperMethods
       }.to_json,
       headers: @api_http_headers
     ) 
+    handle_response_status_code(file, response.code)
     puts "Unfinished files:"
     #only return uploads that are backups of the same file that the user is trying to upload.
     response["files"].select! { |f| f["fileName"] == file[:filename]}
@@ -104,11 +132,12 @@ module HelperMethods
       headers: @api_http_headers
     ) 
     @file_id = response["fileId"]
+    handle_response_status_code(file, response.code)
   end
 
   #Should receive the thread_number argument when this method is called, but if it does not, default to thread number 1.
   #TODO: Might not need this variable thread_number at all
-  def get_upload_part_url(thread_number=1)
+  def get_upload_part_url( file, threa_number=1) #for large files
     response = HTTParty.post("#{@api_url}/b2_get_upload_part_url", 
       body: {
         fileId: @file_id
@@ -117,9 +146,10 @@ module HelperMethods
     ) 
     # This array will store the URLs, one for each thread
     @upload_urls.push(response["uploadUrl"])
+    handle_response_status_code(file, response.code)
   end
 
-  def get_upload_url
+  def get_upload_url(file) #for regular files
     response = HTTParty.post("#{@api_url}/b2_get_upload_url", 
       body: {
       bucketId: @chosen_bucket_hash["bucketId"]
@@ -128,6 +158,7 @@ module HelperMethods
     ) 
     # Keep this in array, in order to have continuity with the large file uploads
     @upload_urls = [response["uploadUrl"]]
+    handle_response_status_code(file, response.code)
   end
 
   def upload_large_file(file)
@@ -168,6 +199,7 @@ module HelperMethods
         debug_output: $stdout
       )
       puts response
+      handle_response_status_code(file, response.code)
       #TODO:Eventually want to deal with the possibility of error messages, and redirect or something, just as the backblaze documentation does.
 
       # Prepare for the next iteration of the loop (i.e., for the next part)
@@ -178,7 +210,7 @@ module HelperMethods
   end
 
 
-  def finish_large_file
+  def finish_large_file(file)
     #TODO:might use large_file_sha1 as the documentations suggests
     
     response = HTTParty.post("#{@api_url}/b2_finish_large_file", 
@@ -189,6 +221,7 @@ module HelperMethods
       headers: @api_http_headers
     ) 
     puts response
+    handle_response_status_code(file, response.code)
   end
 
   def upload_regular_file(file)
@@ -220,12 +253,13 @@ module HelperMethods
       debug_output: $stdout
     )
     puts response
+    handle_response_status_code(file, response.code)
     #TODO:Eventually want to deal with the possibility of error messages, and redirect or something, just as the backblaze documentation does.
   end
 
   private
 
-  def list_already_uploaded_parts
+  def list_already_uploaded_parts(file)
     response = HTTParty.post("#{@api_url}/b2_list_parts", 
       body: {
         fileId: @file_id,
@@ -234,11 +268,27 @@ module HelperMethods
     ) 
     puts "Already uploaded parts:"
     puts response  
+    handle_response_status_code(file, response.code)
   end
 
   def cancel_large_file
 
   end
 
+  def handle_response_status_code(file, http_status)
+    case http_status
+    when 200
+      puts "All good for " + caller[0][/`.*'/][1..-2].to_s
+    when 404
+      puts "O noes not found for " + caller[0][/`.*'/][1..-2].to_s
+    when 500...600
+      puts  "ZOMG ERROR #{http_status} for " + caller[0][/`.*'/][1..-2].to_s
+      puts "Try again...?"
+      if gets.chomp == "y" || gets.chomp == "Y"
+        authorize_account
+        upload_files(file)
+      end
+    end 
+  end 
 end #(of the module)
 
