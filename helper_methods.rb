@@ -14,14 +14,13 @@ module HelperMethods
         #Put a number here for the number of threads
         number_of_threads = 1
         check_for_unfinished_large_files(file)
-        # skips this method if continuing in unfinished upload, since the @file_id from that method would be used instead
+        # skips this method if continuing an unfinished upload, since the @file_id from that method would be used instead
         upload_setup(file) unless @file_id == nil
         @upload_urls = []
         number_of_threads.times { |i| get_upload_part_url(i+1) }
         upload_large_file(file)
         finish_large_file(file)
-      else  # This would then be a regular upload
-        # Probably would leave number of threads as one?
+      else  # For a regular upload
         get_upload_url(file)
         upload_regular_file(file)
       end
@@ -135,6 +134,18 @@ module HelperMethods
     handle_response_status_code(file, response.code)
   end
 
+  def get_upload_url(file) #for regular files
+    response = HTTParty.post("#{@api_url}/b2_get_upload_url", 
+      body: {
+      bucketId: @chosen_bucket_hash["bucketId"]
+      }.to_json,
+      headers: @api_http_headers
+    ) 
+    # Keep this in array, in order to have continuity with the large file uploads
+    @upload_urls = [response["uploadUrl"]]
+    handle_response_status_code(file, response.code)
+  end
+
   #Should receive the thread_number argument when this method is called, but if it does not, default to thread number 1.
   #TODO: Might not need this variable thread_number at all
   def get_upload_part_url( file, threa_number=1) #for large files
@@ -149,18 +160,38 @@ module HelperMethods
     handle_response_status_code(file, response.code)
   end
 
-  def get_upload_url(file) #for regular files
-    response = HTTParty.post("#{@api_url}/b2_get_upload_url", 
-      body: {
-      bucketId: @chosen_bucket_hash["bucketId"]
-      }.to_json,
-      headers: @api_http_headers
-    ) 
-    # Keep this in array, in order to have continuity with the large file uploads
-    @upload_urls = [response["uploadUrl"]]
-    handle_response_status_code(file, response.code)
-  end
+  def upload_regular_file(file)
+    ##Largely following the backblaze official documentation for b2_upload_file
 
+    ##Begin by setting variables
+    ## Read file into memory and calculate an SHA1
+    file_content = File.read(file[:file_path])
+    #TODO: try this instead to potentially speed things up: 
+    #file = file[:file_object].read 
+    #Currently using what is recommended in the documentation 
+    #Need to make sure though that the read method only reads what hasn't already been read, which is what the class method File.read does. But I think what I have your does do that.
+     @sha1_of_parts = [Digest::SHA1.hexdigest(file_content)] # Keeping this as an array in owner to have continuity with uploading large files
+    # Send it over the wire
+    uri = URI(@upload_urls[0])  
+    #TODO: Not sure if this encodes correctly or not
+    encoded_filename = file[:file_name].encode('utf-8')
+    header = { 
+      "Authorization": "#{@api_http_headers[:Authorization]}",
+      "X-Bz-File-Name":  "#{encoded_filename}",
+      "Content-Type": "#{file[:content_type]}",
+      "Content-Length": "#{@local_file_size}", #is the same as the minimum? No distinction at all?
+      "X-Bz-Content-Sha1": "#{@sha1_of_parts[0]}" # Subtract one in order to get the right index from the sha1_of_parts array
+    }
+    response = HTTParty.post(
+      "#{uri}", 
+      headers: header,
+      body: file_content,
+      debug_output: $stdout
+    )
+    puts response
+    handle_response_status_code(file, response.code)
+    #TODO:Eventually want to deal with the possibility of error messages, and redirect or something, just as the backblaze documentation does.
+  end
   def upload_large_file(file)
     ##Largely following the backblaze official documentation for b2_upload_part
 
@@ -209,7 +240,6 @@ module HelperMethods
 
   end
 
-
   def finish_large_file(file)
     #TODO:might use large_file_sha1 as the documentations suggests
     
@@ -224,38 +254,6 @@ module HelperMethods
     handle_response_status_code(file, response.code)
   end
 
-  def upload_regular_file(file)
-    ##Largely following the backblaze official documentation for b2_upload_file
-
-    ##Begin by setting variables
-    ## Read file into memory and calculate an SHA1
-    file_content = File.read(file[:file_path])
-    #TODO: try this instead to potentially speed things up: 
-    #file = file[:file_object].read 
-    #Currently using what is recommended in the documentation 
-    #Need to make sure though that the read method only reads what hasn't already been read, which is what the class method File.read does. But I think what I have your does do that.
-     @sha1_of_parts = [Digest::SHA1.hexdigest(file_content)] # Keeping this as an array in owner to have continuity with uploading large files
-    # Send it over the wire
-    uri = URI(@upload_urls[0])  
-    #TODO: Not sure if this encodes correctly or not
-    encoded_filename = file[:file_name].encode('utf-8')
-    header = { 
-      "Authorization": "#{@api_http_headers[:Authorization]}",
-      "X-Bz-File-Name":  "#{encoded_filename}",
-      "Content-Type": "#{file[:content_type]}",
-      "Content-Length": "#{@local_file_size}", #is the same as the minimum? No distinction at all?
-      "X-Bz-Content-Sha1": "#{@sha1_of_parts[0]}" # Subtract one in order to get the right index from the sha1_of_parts array
-    }
-    response = HTTParty.post(
-      "#{uri}", 
-      headers: header,
-      body: file_content,
-      debug_output: $stdout
-    )
-    puts response
-    handle_response_status_code(file, response.code)
-    #TODO:Eventually want to deal with the possibility of error messages, and redirect or something, just as the backblaze documentation does.
-  end
 
   private
 
@@ -284,7 +282,8 @@ module HelperMethods
     when 500...600
       puts  "ZOMG ERROR #{http_status} for " + caller[0][/`.*'/][1..-2].to_s
       puts "Try again...?"
-      if gets.chomp == "y" || gets.chomp == "Y"
+      user_response = gets.chomp 
+      if user_response == "y" || user_response == "Y"
         authorize_account
         upload_files(file)
       end
