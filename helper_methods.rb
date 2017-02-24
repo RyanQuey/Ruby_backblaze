@@ -107,7 +107,7 @@ module HelperMethods
       #TODO: might not need the following instance variable; but might need it, so leave it for now.
       #@file_to_finish = response["files"][@chosen_file_number.to_i-1] # this will be a hash with various metadata for the file
       @file_id = response["files"][@chosen_file_number.to_i-1]["fileId"]
-      list_already_uploaded_parts
+      list_already_uploaded_parts(file)
       # No need to change any other variable, since the bucket will be the same in the filename will already be the same.
     else
       puts "continuing with new upload..."
@@ -165,9 +165,9 @@ module HelperMethods
     #TODO: try this instead to potentially speed things up: 
     #file = file[:file_object].read 
     #Currently using what is recommended in the documentation 
-    #Need to make sure though that the read method only reads what hasn't already been read, which is what the class method File.read does. But I think what I have your does do that.
-     @sha1_of_parts = [Digest::SHA1.hexdigest(file_content)] # Keeping this as an array in owner to have continuity with uploading large files
-    # Send it over the wire
+    @sha1_of_parts = [Digest::SHA1.hexdigest(file_content)] # Keeping this as an array in owner to have continuity with uploading large files
+
+    ## Send it over the wire
     uri = URI(@upload_urls[0])  
     #TODO: Not sure if this encodes correctly or not
     encoded_file_name = file[:file_name].encode('utf-8')
@@ -178,6 +178,7 @@ module HelperMethods
       "Content-Length": "#{@local_file_size}", #is the same as the minimum? No distinction at all?
       "X-Bz-Content-Sha1": "#{@sha1_of_parts[0]}" # Subtract one in order to get the right index from the sha1_of_parts array
     }
+ binding.pry
     response = HTTParty.post(
       "#{uri}", 
       headers: header,
@@ -193,9 +194,9 @@ module HelperMethods
     ##Largely following the backblaze official documentation for b2_upload_part
 
     ##Begin by setting variables
-    total_bytes_sent = 0 #Initializes variable as 0. Will eventually total all of the bytes sent for the entire file, totaling all the parts
-    bytes_sent_for_part = @minimum_part_size_bytes # this set the default size of the parts
-    @sha1_of_parts = [] # SHA1 of each uploaded part. You will need to save these because you will need them in b2_finish_large_file.
+    total_bytes_sent = 0
+    bytes_sent_for_part = @minimum_part_size_bytes # this set the default size of the parts, in what will be sent for this part, by the time this method is finished.
+    @sha1_of_parts = []
     part_number = 1 #begins with the 1st part, but that will change as the program runs
     thread_number = 1 #This is the default thread number. Redefined this local variable when the thread number changes, so be sure never to exceed the number_of_threads local variable since that local variable determines how many URLs we have, and we need one URL per thread
     ##Iterate through the file until entire file is finished uploading
