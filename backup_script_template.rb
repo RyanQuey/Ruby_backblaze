@@ -24,11 +24,11 @@ file_number = 0
 paths_to_upload = ENV['PATHS_TO_UPLOAD'].split(",")
 paths_to_upload.each do |path|
   file_object = File.open(path)
-  filename = path.split("/")[-1]
+  file_name = path.split("/")[-1]
   file_to_merge = {
   
   #TODO:might make the keys into symbols instead of strings?
-    file_name: filename,
+    file_name: file_name,
     content_type: "b2/x-auto",
     file_object: file_object,
     file_path: path
@@ -56,7 +56,7 @@ files_to_upload.each_with_index do |f, index|
     if f[:file_path][-1] == "/" 
       f[:file_path].chop!
     end
-    archive_path = "#{f[:file_path]}" + ".tar.gz" # only take the path where the target file is located, does not include the filename itself
+    archive_path = "#{f[:file_path]}" + ".tar.gz" # only take the path where the target file is located, does not include the file_name itself
     # [1, -1] so that removes the first "/", as instructed by tar
     system "tar -czvf #{archive_path} -C / #{f[:file_path][1..-1]}"
 
