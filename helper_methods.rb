@@ -7,23 +7,25 @@ module HelperMethods
   include HTTParty
   
   def upload_files(file)
-      list_and_choose_bucket(file)
-      @local_file_size = file[:file_object].size
+    list_and_choose_bucket(file)
+    @local_file_size = file[:file_object].size
+
+    if @local_file_size > @minimum_part_size_bytes # If true, this would be a large upload
+      #Put a number here for the number of threads
+      number_of_threads = 1
+      check_for_unfinished_large_files(file)
+      # skips this method if continuing an unfinished upload, since the @file_id from that method would be used instead
+      upload_setup(file) if  @file_id == nil
       #sets the variable as an empty array which will be filled up by the call to get_upload_url
-      if @local_file_size > @minimum_part_size_bytes # If true, this would be a large upload
-        #Put a number here for the number of threads
-        number_of_threads = 1
-        check_for_unfinished_large_files(file)
-        # skips this method if continuing an unfinished upload, since the @file_id from that method would be used instead
-        upload_setup(file) if  @file_id == nil
-        @upload_urls = []
-        number_of_threads.times { |i| get_upload_part_url( file, i+1) } # +1 , or else i will start at 0 rather than 1.
-        upload_large_file(file)
-        finish_large_file(file)
-      else  # For a regular upload
-        get_upload_url(file)
-        upload_regular_file(file)
-      end
+      @upload_urls = []
+      number_of_threads.times { |i| get_upload_part_url( file, i+1) } # +1 , or else i will start at 0 rather than 1.
+      upload_large_file(file)
+      finish_large_file(file)
+
+    else  # For a regular upload
+      get_upload_url(file)
+      upload_regular_file(file)
+    end
   end
 
   def authorize_account
@@ -137,23 +139,27 @@ module HelperMethods
       }.to_json,
       headers: @api_http_headers
     ) 
+    handle_response_status_code(file, response)
     # Keep this in array, in order to have continuity with the large file uploads
     @upload_urls = [response["uploadUrl"]]
-    handle_response_status_code(file, response)
+    # A separate authorization token for b2_upload_file
+    @token_for_file_upload = response["authorizationToken"]
   end
 
   #Should receive the thread_number argument when this method is called, but if it does not, default to thread number 1.
   #TODO: Might not need this variable thread_number at all
-  def get_upload_part_url( file, thread_number=1) #for large files
+  def get_upload_part_url(file, thread_number=1) #for large files
     response = HTTParty.post("#{@api_url}/b2_get_upload_part_url", 
       body: {
         fileId: @file_id
       }.to_json,
       headers: @api_http_headers
     ) 
+    handle_response_status_code(file, response)
     # This array will store the URLs, one for each thread
     @upload_urls.push(response["uploadUrl"])
-    handle_response_status_code(file, response)
+    # A separate authorization token for b2_upload_part
+    @token_for_part_upload = response["authorizationToken"]
   end
 
   def upload_regular_file(file)
@@ -172,13 +178,12 @@ module HelperMethods
     #TODO: Not sure if this encodes correctly or not
     encoded_file_name = file[:file_name].encode('utf-8')
     header = { 
-      "Authorization": "#{@api_http_headers[:Authorization]}",
+      "Authorization": "#{@token_for_file_upload}",
       "X-Bz-File-Name":  "#{encoded_file_name}",
       "Content-Type": "#{file[:content_type]}",
       "Content-Length": "#{@local_file_size}", #is the same as the minimum? No distinction at all?
       "X-Bz-Content-Sha1": "#{@sha1_of_parts[0]}" # Subtract one in order to get the right index from the sha1_of_parts array
     }
- binding.pry
     response = HTTParty.post(
       "#{uri}", 
       headers: header,
@@ -186,7 +191,7 @@ module HelperMethods
       debug_output: $stdout
     )
     puts response
-    handle_response_status_code(file, response)
+    handle_response_status_code(file, response.code)
     #TODO:Eventually want to deal with the possibility of error messages, and redirect or something, just as the backblaze documentation does.
   end
 
@@ -216,7 +221,7 @@ module HelperMethods
       # Send it over the wire
       uri = URI(@upload_urls[thread_number -1]) # Subtract one in order to get the right index from the sha1_of_parts array       
       header = { 
-        "Authorization": "#{@api_http_headers[:Authorization]}",
+        "Authorization": "#{@token_for_part_upload}",
         "X-Bz-Part-Number":  "#{part_number}",
         "Content-Length": "#{bytes_sent_for_part}", #is the same as the minimum? No distinction at all?
         "X-Bz-Content-Sha1": "#{@sha1_of_parts[part_number -1]}" # Subtract one in order to get the right index from the sha1_of_parts array
@@ -271,18 +276,18 @@ module HelperMethods
 
   end
 
-  def handle_response_status_code(file, http_response)
-    case http_response["status"]
+  def handle_response_status_code(file, http_status)
+    case http_status
     when 200
       puts "All good for " + caller[0][/`.*'/][1..-2].to_s
     when 404
-      puts "O noes not found for " + caller[0][/`.*'/][1..-2].to_s
+      puts "Not found for " + caller[0][/`.*'/][1..-2].to_s
     when 400..401
-      puts response
-    when 500...600
-      puts response
+      puts "Status: " + http_status
+    when 500..599
+      puts "Status: " + http_status
       puts  "ZOMG ERROR #{http_status} for " + caller[0][/`.*'/][1..-2].to_s
-      puts "Try again...?"
+      puts "Try again...?[y/n]"
       user_response = gets.chomp 
       if user_response == "y" || user_response == "Y"
         authorize_account

@@ -1,7 +1,7 @@
 #################
 # INSTRUCTIONS:
 
-# -Run this file using "ruby large_files.rb" and put in the inputs  in order to backup large files on backblaze
+# -Run this file using "foreman run ruby large_files.rb" and put in the inputs  in order to backup large files on backblaze
 
 # -Make sure the sample.env file has been turned into .env and filled in using information from the backblaze b2 dashboard
 
@@ -46,10 +46,10 @@ end
 
 
 
-## Archive the folder that I'm trying to backup.
-# Note: bzip is supposed to compress the folder into a smaller size, but gzip is supposed to be faster, so I'll go with that route since borg is already compressing.
 
 authorize_account
+## Archive the folder that I'm trying to backup.
+# Note: bzip is supposed to compress the folder into a smaller size, but gzip is supposed to be faster, so I'll go with that route since borg is already compressing.
 files_to_upload.each_with_index do |f, index|
   if Dir.exists?(f[:file_path]) #checks to see if this is a directory
     #Eliminates the final "/" which is often included in paths for directories
