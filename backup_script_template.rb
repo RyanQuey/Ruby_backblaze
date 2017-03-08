@@ -46,7 +46,6 @@ end
 
 
 
-
 authorize_account
 ## Archive the folder that I'm trying to backup.
 # Note: bzip is supposed to compress the folder into a smaller size, but gzip is supposed to be faster, so I'll go with that route since borg is already compressing.

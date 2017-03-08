@@ -123,7 +123,7 @@ module HelperMethods
       body: {
         bucketId: @chosen_bucket_hash["bucketId"],
         fileName: file[:file_name],
-        contentType: "#{file["content_type"]}"
+        contentType: file["content_type"]
         #could also eventually incorporate fileInfo parameter here
       }.to_json,
       headers: @api_http_headers
@@ -174,18 +174,18 @@ module HelperMethods
     @sha1_of_parts = [Digest::SHA1.hexdigest(file_content)] # Keeping this as an array in owner to have continuity with uploading large files
 
     ## Send it over the wire
-    uri = URI(@upload_urls[0])  
+    uri = URI(@upload_urls[0])
     #TODO: Not sure if this encodes correctly or not
     encoded_file_name = file[:file_name].encode('utf-8')
     header = { 
-      "Authorization": "#{@token_for_file_upload}",
-      "X-Bz-File-Name":  "#{encoded_file_name}",
-      "Content-Type": "#{file[:content_type]}",
-      "Content-Length": "#{@local_file_size}", #is the same as the minimum? No distinction at all?
-      "X-Bz-Content-Sha1": "#{@sha1_of_parts[0]}" # Subtract one in order to get the right index from the sha1_of_parts array
+      "Authorization": @token_for_file_upload,
+      "X-Bz-File-Name":  encoded_file_name,
+      "Content-Type": file[:content_type],
+      "Content-Length": @local_file_size.to_s, #is the same as the minimum? No distinction at all?
+      "X-Bz-Content-Sha1": @sha1_of_parts[0] # Subtract one in order to get the right index from the sha1_of_parts array
     }
     response = HTTParty.post(
-      "#{uri}", 
+      uri, 
       headers: header,
       body: file_content,
       debug_output: $stdout
@@ -215,17 +215,17 @@ module HelperMethods
       ## Read file into memory and calculate an SHA1
       file_part_data = File.read(file[:file_path], bytes_sent_for_part, total_bytes_sent, mode: "rb")
       #TODO: try this instead to potentially speed things up: 
-      #file_part_data = file[:file_object].read(bytes_sent_for_part) 
-      #Currently using what is recommended in the documentation 
+        #file_part_data = file[:file_object].read(bytes_sent_for_part) 
+        #Currently using what is recommended in the documentation 
       #Need to make sure though that the read method only reads what hasn't already been read, which is what the class method File.read does. But I think what I have your does do that.
        @sha1_of_parts.push(Digest::SHA1.hexdigest(file_part_data)) # Adds the SHA 1 of this part onto the sha1_of_parts array
       # Send it over the wire
       uri = URI(@upload_urls[thread_number -1]) # Subtract one in order to get the right index from the sha1_of_parts array       
       header = { 
-        "Authorization": "#{@token_for_part_upload}",
-        "X-Bz-Part-Number":  "#{part_number}",
-        "Content-Length": "#{bytes_sent_for_part}", #is the same as the minimum? No distinction at all?
-        "X-Bz-Content-Sha1": "#{@sha1_of_parts[part_number -1]}" # Subtract one in order to get the right index from the sha1_of_parts array
+        "Authorization": @token_for_part_upload,
+        "X-Bz-Part-Number": part_number.to_s,
+        "Content-Length": bytes_sent_for_part.to_s, #is the same as the minimum? No distinction at all?
+        "X-Bz-Content-Sha1": @sha1_of_parts[part_number -1] # Subtract one in order to get the right index from the sha1_of_parts array
       }
       response = HTTParty.post(
         "#{uri}", 
@@ -295,10 +295,9 @@ module HelperMethods
       puts "Try again...?[y/n]"
       user_response = gets.chomp 
       if user_response == "y" || user_response == "Y"
-        authorize_account
         upload_files(file)
       end
     end 
   end 
-end #(of the module)
+end 
 
