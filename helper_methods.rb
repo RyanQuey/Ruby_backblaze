@@ -6,6 +6,23 @@ require 'digest/sha1'
 module HelperMethods
   include HTTParty
   
+  def authorize_account
+    response = HTTParty.get("https://api.backblazeb2.com/b2api/v1/b2_authorize_account", {
+      basic_auth: {
+        username: ENV['ACCOUNT_ID'], 
+        password: ENV['APPLICATION_KEY']
+      }
+    })
+    @api_url = response['apiUrl'] + "/b2api/v1/"
+    @api_http_headers = {
+      "Authorization": response['authorizationToken'],
+      "Content-Type": "application/json"
+    }
+    @minimum_part_size_bytes = response['minimumPartSize']
+    ##
+    ## b2_list_buckets ##
+  end
+
   def upload_files(file)
     list_and_choose_bucket(file)
     @local_file_size = file[:file_object].size
@@ -28,29 +45,12 @@ module HelperMethods
     end
   end
 
-  def authorize_account
-    response = HTTParty.get("https://api.backblazeb2.com/b2api/v1/b2_authorize_account", {
-      basic_auth: {
-        username: ENV['ACCOUNT_ID'], 
-        password: ENV['APPLICATION_KEY']
-      }
-    })
-    @api_url = response['apiUrl'] + "/b2api/v1/"
-    @api_http_headers = {
-      "Authorization": response['authorizationToken'],
-      "Content-Type": "application/json"
-    }
-    @minimum_part_size_bytes = response['minimumPartSize']
-    ##
-    ## b2_list_buckets ##
-  end
-
   def list_and_choose_bucket(file)
     response = HTTParty.post("#{@api_url}/b2_list_buckets", {
       body: {accountId: ENV['ACCOUNT_ID']}.to_json,
       headers: @api_http_headers
     }) 
-    handle_response_status_code(file, response)
+    handle_response_status_code(file, response.code)
     if @bucket_name == "prompt me"
       puts "Available buckets:"
       response["buckets"].each_with_index do |b, i|
@@ -91,7 +91,7 @@ module HelperMethods
       }.to_json,
       headers: @api_http_headers
     ) 
-    handle_response_status_code(file, response)
+    handle_response_status_code(file, response.code)
     puts "Unfinished files:"
     #only return uploads that are backups of the same file that the user is trying to upload.
     response["files"].select! { |f| f["fileName"] == file[:file_name]}
@@ -129,17 +129,17 @@ module HelperMethods
       headers: @api_http_headers
     ) 
     @file_id = response["fileId"]
-    handle_response_status_code(file, response)
+    handle_response_status_code(file, response.code)
   end
 
   def get_upload_url(file) #for regular files
     response = HTTParty.post("#{@api_url}/b2_get_upload_url", 
       body: {
-      bucketId: @chosen_bucket_hash["bucketId"]
+        bucketId: @chosen_bucket_hash["bucketId"]
       }.to_json,
       headers: @api_http_headers
     ) 
-    handle_response_status_code(file, response)
+    handle_response_status_code(file, response.code)
     # Keep this in array, in order to have continuity with the large file uploads
     @upload_urls = [response["uploadUrl"]]
     # A separate authorization token for b2_upload_file
@@ -155,7 +155,7 @@ module HelperMethods
       }.to_json,
       headers: @api_http_headers
     ) 
-    handle_response_status_code(file, response)
+    handle_response_status_code(file, response.code)
     # This array will store the URLs, one for each thread
     @upload_urls.push(response["uploadUrl"])
     # A separate authorization token for b2_upload_part
@@ -190,6 +190,7 @@ module HelperMethods
       body: file_content,
       debug_output: $stdout
     )
+    #Note that httparty gives a response of nil on certain occasions, but that the response still responds to method such as code and success?.
     puts response
     handle_response_status_code(file, response.code)
     #TODO:Eventually want to deal with the possibility of error messages, and redirect or something, just as the backblaze documentation does.
@@ -232,8 +233,9 @@ module HelperMethods
         body: file_part_data,
         debug_output: $stdout
       )
+      #Note that httparty gives a response of nil on certain occasions, but that the response still responds to method such as code and success?.
       puts response
-      handle_response_status_code(file, response)
+      handle_response_status_code(file, response.code)
       #TODO:Eventually want to deal with the possibility of error messages, and redirect or something, just as the backblaze documentation does.
 
       # Prepare for the next iteration of the loop (i.e., for the next part)
@@ -253,8 +255,9 @@ module HelperMethods
       }.to_json,
       headers: @api_http_headers
     ) 
+    #Note that httparty gives a response of nil on certain occasions, but that the response still responds to method such as code and success?.
     puts response
-    handle_response_status_code(file, response)
+    handle_response_status_code(file, response.code)
   end
 
 
@@ -268,25 +271,27 @@ module HelperMethods
       headers: @api_http_headers
     ) 
     puts "Already uploaded parts:"
+    #Note that httparty gives a response of nil on certain occasions, but that the response still responds to method such as code and success?.
     puts response  
-    handle_response_status_code(file, response)
+    handle_response_status_code(file, response.code)
   end
 
   def cancel_large_file
 
   end
 
-  def handle_response_status_code(file, http_status)
-    case http_status
+  def handle_response_status_code(file, response_code)
+    #Note that httparty gives a response of nil on certain occasions, but that the response still responds to method such as code and success?.
+    case response_code
     when 200
       puts "All good for " + caller[0][/`.*'/][1..-2].to_s
     when 404
       puts "Not found for " + caller[0][/`.*'/][1..-2].to_s
     when 400..401
-      puts "Status: " + http_status
+      puts "Status: " + response_code.to_s
     when 500..599
-      puts "Status: " + http_status
-      puts  "ZOMG ERROR #{http_status} for " + caller[0][/`.*'/][1..-2].to_s
+      puts "Status: " + response_code.to_s
+      puts  "ZOMG ERROR #{response_code.to_s} for " + caller[0][/`.*'/][1..-2].to_s
       puts "Try again...?[y/n]"
       user_response = gets.chomp 
       if user_response == "y" || user_response == "Y"
