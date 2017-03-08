@@ -14,8 +14,9 @@ module HelperMethods
       }
     })
     @api_url = response['apiUrl'] + "/b2api/v1/"
-    @api_http_headers = {
-      "Authorization": response['authorizationToken'],
+    @authorization_token = response['authorizationToken']
+    {
+      "Authorization": @authorization_token,
       "Content-Type": "application/json"
     }
     @minimum_part_size_bytes = response['minimumPartSize']
@@ -48,7 +49,10 @@ module HelperMethods
   def list_and_choose_bucket(file)
     response = HTTParty.post("#{@api_url}/b2_list_buckets", {
       body: {accountId: ENV['ACCOUNT_ID']}.to_json,
-      headers: @api_http_headers
+      headers: {
+        "Authorization": @authorization_token,
+        "Content-Type": "application/json"
+      }
     }) 
     handle_response_status_code(file, response.code)
     if @bucket_name == "prompt me"
@@ -89,7 +93,10 @@ module HelperMethods
       body: {
         bucketId: @chosen_bucket_hash["bucketId"],
       }.to_json,
-      headers: @api_http_headers
+      headers: {
+        "Authorization": @authorization_token,
+        "Content-Type": "application/json"
+      }
     ) 
     handle_response_status_code(file, response.code)
     puts "Unfinished files:"
@@ -126,10 +133,13 @@ module HelperMethods
         contentType: file["content_type"]
         #could also eventually incorporate fileInfo parameter here
       }.to_json,
-      headers: @api_http_headers
+      headers: {
+        "Authorization": @authorization_token,
+        "Content-Type": "application/json"
+      }
     ) 
-    @file_id = response["fileId"]
     handle_response_status_code(file, response.code)
+    @file_id = response["fileId"]
   end
 
   def get_upload_url(file) #for regular files
@@ -137,9 +147,13 @@ module HelperMethods
       body: {
         bucketId: @chosen_bucket_hash["bucketId"]
       }.to_json,
-      headers: @api_http_headers
+      headers: {
+        "Authorization": @authorization_token,
+        "Content-Type": "application/json"
+      }
     ) 
     handle_response_status_code(file, response.code)
+
     # Keep this in array, in order to have continuity with the large file uploads
     @upload_urls = [response["uploadUrl"]]
     # A separate authorization token for b2_upload_file
@@ -153,7 +167,10 @@ module HelperMethods
       body: {
         fileId: @file_id
       }.to_json,
-      headers: @api_http_headers
+      headers: {
+        "Authorization": @authorization_token,
+        "Content-Type": "application/json"
+      }
     ) 
     handle_response_status_code(file, response.code)
     # This array will store the URLs, one for each thread
@@ -177,12 +194,13 @@ module HelperMethods
     uri = URI(@upload_urls[0])
     #TODO: Not sure if this encodes correctly or not
     encoded_file_name = file[:file_name].encode('utf-8')
+ binding.pry
     header = { 
       "Authorization": @token_for_file_upload,
       "X-Bz-File-Name":  encoded_file_name,
       "Content-Type": file[:content_type],
-      "Content-Length": @local_file_size.to_s, #is the same as the minimum? No distinction at all?
-      "X-Bz-Content-Sha1": @sha1_of_parts[0] # Subtract one in order to get the right index from the sha1_of_parts array
+      "Content-Length": @local_file_size.to_s, 
+      "X-Bz-Content-Sha1": @sha1_of_parts[0] 
     }
     response = HTTParty.post(
       uri, 
@@ -228,7 +246,7 @@ module HelperMethods
         "X-Bz-Content-Sha1": @sha1_of_parts[part_number -1] # Subtract one in order to get the right index from the sha1_of_parts array
       }
       response = HTTParty.post(
-        "#{uri}", 
+        uri, 
         headers: header,
         body: file_part_data,
         debug_output: $stdout
@@ -253,7 +271,10 @@ module HelperMethods
         fileId: @file_id,
         partSha1Array: @sha1_of_parts
       }.to_json,
-      headers: @api_http_headers
+      headers: {
+        "Authorization": @authorization_token,
+        "Content-Type": "application/json"
+      }
     ) 
     #Note that httparty gives a response of nil on certain occasions, but that the response still responds to method such as code and success?.
     puts response
@@ -268,7 +289,10 @@ module HelperMethods
       body: {
         fileId: @file_id,
       }.to_json,
-      headers: @api_http_headers
+      headers: {
+        "Authorization": @authorization_token,
+        "Content-Type": "application/json"
+      }
     ) 
     puts "Already uploaded parts:"
     #Note that httparty gives a response of nil on certain occasions, but that the response still responds to method such as code and success?.
@@ -291,7 +315,7 @@ module HelperMethods
       puts "Status: " + response_code.to_s
     when 500..599
       puts "Status: " + response_code.to_s
-      puts  "ZOMG ERROR #{response_code.to_s} for " + caller[0][/`.*'/][1..-2].to_s
+      puts  "ERROR http response code#{response_code.to_s} for " + caller[0][/`.*'/][1..-2].to_s
       puts "Try again...?[y/n]"
       user_response = gets.chomp 
       if user_response == "y" || user_response == "Y"

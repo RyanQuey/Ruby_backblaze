@@ -26,13 +26,11 @@ paths_to_upload.each do |path|
   file_object = File.open(path)
   file_name = path.split("/")[-1]
   file_to_merge = {
-  
-  #TODO:might make the keys into symbols instead of strings?
     file_name: file_name,
+    #content_type: "image/png",
     content_type: "b2/x-auto",
     file_object: file_object,
     file_path: path
-  
   }
   files_to_upload = files_to_upload.push(file_to_merge)
   file_number += 1
@@ -64,7 +62,7 @@ files_to_upload.each_with_index do |f, index|
     new_file_object = File.open(new_file_path)
     files_to_upload[index] = {
       file_name: "#{f[:file_name]}.tar.gz",
-      content_type: "b2/x-auto",
+      content_type: "application/gzip", #"b2/x-auto",
       file_object: new_file_object,
       file_path: new_file_path
     }
