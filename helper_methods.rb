@@ -4,10 +4,10 @@ require 'pry'
 require 'digest/sha1'
 
 module HelperMethods
-  include HTTParty
+  include HTTMultiParty
   
   def authorize_account
-    response = HTTParty.get("https://api.backblazeb2.com/b2api/v1/b2_authorize_account", {
+    response = HTTMultiParty.get("https://api.backblazeb2.com/b2api/v1/b2_authorize_account", {
       basic_auth: {
         username: ENV['ACCOUNT_ID'], 
         password: ENV['APPLICATION_KEY']
@@ -47,7 +47,7 @@ module HelperMethods
   end
 
   def list_and_choose_bucket(file)
-    response = HTTParty.post("#{@api_url}/b2_list_buckets", {
+    response = HTTMultiParty.post("#{@api_url}/b2_list_buckets", {
       body: {accountId: ENV['ACCOUNT_ID']}.to_json,
       headers: {
         "Authorization": @authorization_token,
@@ -89,7 +89,7 @@ module HelperMethods
     unless user_input == "y" || user_input == "Y"
       return
     end
-    response = HTTParty.post("#{@api_url}/b2_list_unfinished_large_files", 
+    response = HTTMultiParty.post("#{@api_url}/b2_list_unfinished_large_files", 
       body: {
         bucketId: @chosen_bucket_hash["bucketId"],
       }.to_json,
@@ -126,7 +126,7 @@ module HelperMethods
 
   def upload_setup(file)
     #Basically implements b2_start_large_file API call
-    response = HTTParty.post("#{@api_url}/b2_start_large_file", 
+    response = HTTMultiParty.post("#{@api_url}/b2_start_large_file", 
       body: {
         bucketId: @chosen_bucket_hash["bucketId"],
         fileName: file[:file_name],
@@ -143,7 +143,7 @@ module HelperMethods
   end
 
   def get_upload_url(file) #for regular files
-    response = HTTParty.post("#{@api_url}/b2_get_upload_url", 
+    response = HTTMultiParty.post("#{@api_url}/b2_get_upload_url", 
       body: {
         bucketId: @chosen_bucket_hash["bucketId"]
       }.to_json,
@@ -158,12 +158,13 @@ module HelperMethods
     @upload_urls = [response["uploadUrl"]]
     # A separate authorization token for b2_upload_file
     @token_for_file_upload = response["authorizationToken"]
+ binding.pry
   end
 
   #Should receive the thread_number argument when this method is called, but if it does not, default to thread number 1.
   #TODO: Might not need this variable thread_number at all
   def get_upload_part_url(file, thread_number=1) #for large files
-    response = HTTParty.post("#{@api_url}/b2_get_upload_part_url", 
+    response = HTTMultiParty.post("#{@api_url}/b2_get_upload_part_url", 
       body: {
         fileId: @file_id
       }.to_json,
@@ -201,7 +202,7 @@ module HelperMethods
       "Content-Length": @local_file_size.to_s, 
       "X-Bz-Content-Sha1": @sha1_of_parts[0] 
     }
-    response = HTTParty.post(
+    response = HTTMultiParty.post(
       uri, 
       headers: header,
       body: file_content,
@@ -244,7 +245,7 @@ module HelperMethods
         "Content-Length": bytes_sent_for_part.to_s, #is the same as the minimum? No distinction at all?
         "X-Bz-Content-Sha1": @sha1_of_parts[part_number -1] # Subtract one in order to get the right index from the sha1_of_parts array
       }
-      response = HTTParty.post(
+      response = HTTMultiParty.post(
         uri, 
         headers: header,
         body: file_part_data,
@@ -265,7 +266,7 @@ module HelperMethods
   def finish_large_file(file)
     #TODO:might use large_file_sha1 as the documentations suggests
     
-    response = HTTParty.post("#{@api_url}/b2_finish_large_file", 
+    response = HTTMultiParty.post("#{@api_url}/b2_finish_large_file", 
       body: {
         fileId: @file_id,
         partSha1Array: @sha1_of_parts
@@ -284,7 +285,7 @@ module HelperMethods
   private
 
   def list_already_uploaded_parts(file)
-    response = HTTParty.post("#{@api_url}/b2_list_parts", 
+    response = HTTMultiParty.post("#{@api_url}/b2_list_parts", 
       body: {
         fileId: @file_id,
       }.to_json,

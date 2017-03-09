@@ -7,4 +7,5 @@ ruby "2.3.1"
 gem 'rspec'
 gem 'pry'
 gem 'httparty'
+gem 'httmultiparty'
 gem 'guard'

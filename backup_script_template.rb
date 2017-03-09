@@ -10,7 +10,7 @@
 # -Set the @bucket_name (see instructions below)
 ##################
 
-require "httparty"
+require "httmultiparty"
 require_relative './helper_methods'
 include HelperMethods
 
@@ -62,7 +62,8 @@ files_to_upload.each_with_index do |f, index|
     new_file_object = File.open(new_file_path)
     files_to_upload[index] = {
       file_name: "#{f[:file_name]}.tar.gz",
-      content_type: "application/gzip", #"b2/x-auto",
+      content_type: "b2/x-auto",
+#      content_type: "application/gzip",
       file_object: new_file_object,
       file_path: new_file_path
     }
