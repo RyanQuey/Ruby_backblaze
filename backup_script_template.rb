@@ -10,7 +10,6 @@
 # -Set the @bucket_name (see instructions below)
 ##################
 
-require "httmultiparty"
 require_relative './helper_methods'
 include HelperMethods
 
@@ -28,7 +27,8 @@ paths_to_upload.each do |path|
   file_to_merge = {
     file_name: file_name,
     #content_type: "image/png",
-    content_type: "b2/x-auto",
+    content_type: "multipart/form-data",
+    #content_type: "b2/x-auto",
     file_object: file_object,
     file_path: path
   }
@@ -62,8 +62,9 @@ files_to_upload.each_with_index do |f, index|
     new_file_object = File.open(new_file_path)
     files_to_upload[index] = {
       file_name: "#{f[:file_name]}.tar.gz",
-      content_type: "b2/x-auto",
-#      content_type: "application/gzip",
+#      content_type: "b2/x-auto",
+      content_type: "multipart/form-data",
+#     content_type: "application/gzip",
       file_object: new_file_object,
       file_path: new_file_path
     }

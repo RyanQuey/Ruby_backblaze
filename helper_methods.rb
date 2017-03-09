@@ -1,4 +1,6 @@
 require 'pry'
+require 'rest-client'
+require "httmultiparty"
 
 #TODO: I might want to do something better in the future, but using this for now, since it is in the template given in the documentation for b2
 require 'digest/sha1'
@@ -158,7 +160,6 @@ module HelperMethods
     @upload_urls = [response["uploadUrl"]]
     # A separate authorization token for b2_upload_file
     @token_for_file_upload = response["authorizationToken"]
- binding.pry
   end
 
   #Should receive the thread_number argument when this method is called, but if it does not, default to thread number 1.
@@ -192,7 +193,7 @@ module HelperMethods
     @sha1_of_parts = [Digest::SHA1.hexdigest(file_content)] # Keeping this as an array in owner to have continuity with uploading large files
 
     ## Send it over the wire
-    uri = URI(@upload_urls[0])
+    uri = URI(@upload_urls[0]).to_s
     #TODO: Not sure if this encodes correctly or not
     encoded_file_name = file[:file_name].encode('utf-8')
     header = { 
@@ -202,11 +203,11 @@ module HelperMethods
       "Content-Length": @local_file_size.to_s, 
       "X-Bz-Content-Sha1": @sha1_of_parts[0] 
     }
-    response = HTTMultiParty.post(
-      uri, 
+    response = RestClient::Request.execute(
+      method: :post,
+      url: uri, 
+      payload: file_content, 
       headers: header,
-      body: file_content,
-      debug_output: $stdout
     )
     #Note that httparty gives a response of nil on certain occasions, but that the response still responds to method such as code and success?.
     puts response
@@ -238,18 +239,19 @@ module HelperMethods
       #Need to make sure though that the read method only reads what hasn't already been read, which is what the class method File.read does. But I think what I have your does do that.
        @sha1_of_parts.push(Digest::SHA1.hexdigest(file_part_data)) # Adds the SHA 1 of this part onto the sha1_of_parts array
       # Send it over the wire
-      uri = URI(@upload_urls[thread_number -1]) # Subtract one in order to get the right index from the sha1_of_parts array       
+      uri = URI(@upload_urls[thread_number -1]).to_s # Subtract one in order to get the right index from the sha1_of_parts array       
       header = { 
         "Authorization": @token_for_part_upload,
         "X-Bz-Part-Number": part_number.to_s,
         "Content-Length": bytes_sent_for_part.to_s, #is the same as the minimum? No distinction at all?
-        "X-Bz-Content-Sha1": @sha1_of_parts[part_number -1] # Subtract one in order to get the right index from the sha1_of_parts array
+        "X-Bz-Content-Sha1": @sha1_of_parts[part_number -1], # Subtract one in order to get the right index from the sha1_of_parts array
+        "Content-Type": file[:content_type]
       }
-      response = HTTMultiParty.post(
-        uri, 
+      response = RestClient::Request.execute(
+        method: :post,
+        url: uri, 
+        payload: file_part_data, 
         headers: header,
-        body: file_part_data,
-        debug_output: $stdout
       )
       #Note that httparty gives a response of nil on certain occasions, but that the response still responds to method such as code and success?.
       puts response
