@@ -194,7 +194,6 @@ module HelperMethods
     uri = URI(@upload_urls[0])
     #TODO: Not sure if this encodes correctly or not
     encoded_file_name = file[:file_name].encode('utf-8')
- binding.pry
     header = { 
       "Authorization": @token_for_file_upload,
       "X-Bz-File-Name":  encoded_file_name,
